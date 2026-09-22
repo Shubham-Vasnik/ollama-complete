@@ -1,0 +1,59 @@
+<idea-plugin>
+    <id>com.shubhamvasnik.ollamacomplete</id>
+    <name>OllamaComplete</name>
+    <vendor url="https://shubhamvasnik.com">Shubham Vasnik</vendor>
+
+    <description><![CDATA[
+    AI code completion and chat powered by local models running on <a href="https://ollama.com">Ollama</a>.
+    <ul>
+      <li>Inline (gray text) code completion while you type. Press <b>Tab</b> to accept, <b>Esc</b> to dismiss.</li>
+      <li>Works with fill-in-the-middle coder models (e.g. qwen2.5-coder) and with regular instruct models.</li>
+      <li>Model selection for completion and chat: in Settings | Tools | OllamaComplete, in the status bar, and in the chat window.</li>
+      <li>OllamaComplete chat tool window with streaming answers, syntax-highlighted code blocks, Copy and Insert at Caret.</li>
+      <li>Editor actions: Explain Selection and Add Selection to Chat.</li>
+    </ul>
+    Everything runs locally; no code leaves your machine.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable
+                parentId="tools"
+                id="com.shubhamvasnik.ollamacomplete.settings"
+                displayName="OllamaComplete"
+                instance="com.shubhamvasnik.ollamacomplete.settings.OllamaConfigurable"/>
+
+        <inline.completion.provider implementation="com.shubhamvasnik.ollamacomplete.completion.OllamaInlineCompletionProvider"/>
+
+        <toolWindow id="OllamaComplete"
+                    anchor="right"
+                    icon="/icons/ollama.svg"
+                    factoryClass="com.shubhamvasnik.ollamacomplete.chat.ChatToolWindowFactory"/>
+
+        <statusBarWidgetFactory id="com.shubhamvasnik.ollamacomplete.statusBar"
+                                implementation="com.shubhamvasnik.ollamacomplete.statusbar.OllamaStatusBarWidgetFactory"/>
+
+        <notificationGroup id="OllamaComplete" displayType="BALLOON"/>
+    </extensions>
+
+    <actions>
+        <group id="OllamaComplete.EditorPopup" text="OllamaComplete" popup="true" icon="/icons/ollama.svg">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <action id="OllamaComplete.ExplainSelection"
+                    class="com.shubhamvasnik.ollamacomplete.actions.ExplainSelectionAction"
+                    text="Explain Selection"
+                    description="Ask OllamaComplete chat to explain the selected code"/>
+            <action id="OllamaComplete.AddSelectionToChat"
+                    class="com.shubhamvasnik.ollamacomplete.actions.AddSelectionToChatAction"
+                    text="Add Selection to Chat"
+                    description="Paste the selected code into the OllamaComplete chat input"/>
+        </group>
+        <action id="OllamaComplete.ToggleCompletion"
+                class="com.shubhamvasnik.ollamacomplete.actions.ToggleCompletionAction"
+                text="OllamaComplete Code Completion"
+                description="Enable or disable OllamaComplete inline code completion">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

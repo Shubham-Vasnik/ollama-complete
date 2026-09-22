@@ -1,0 +1,15 @@
+.gradle/
+.intellijPlatform/
+.kotlin/
+build/
+out/
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+.idea/shelf/
+.idea/gradle.xml
+.idea/misc.xml
+.idea/libraries/
+.idea/modules.xml
+.idea/*.iml
+*.iml
