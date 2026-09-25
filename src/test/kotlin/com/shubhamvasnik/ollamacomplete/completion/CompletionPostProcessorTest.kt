@@ -32,6 +32,16 @@ class CompletionPostProcessorTest {
     }
 
     @Test
+    fun `removes an echoed single letter only when the identifier is known`() {
+        val known = "static int zorbleTriple(int v)"
+        assertEquals("orbleTriple(x);", CompletionPostProcessor.removeEchoedLinePrefix("zorbleTriple(x);", "return MathHelpers.z", known))
+        // Unknown identifier: the letter may be the start of a new name, so it is kept.
+        assertEquals("zorbleTriple(x);", CompletionPostProcessor.removeEchoedLinePrefix("zorbleTriple(x);", "return MathHelpers.z", ""))
+        // `xxs` is not an echo of `x` when `xxs` is the known name.
+        assertEquals("xs.size", CompletionPostProcessor.removeEchoedLinePrefix("xs.size", "return x", "val xs = 1; val xxs = 2"))
+    }
+
+    @Test
     fun `does not indent the first line twice and indents following lines`() {
         val raw = "if (x) {\n    return 1;\n}"
         val result = CompletionPostProcessor.process(raw, ctx("class A {\n        "), singleLine = false, instructMode = true)

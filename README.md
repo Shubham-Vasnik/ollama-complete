@@ -9,6 +9,10 @@ No code leaves your machine.
   - **Tab** accepts, **Esc** dismisses, **Shift+Alt+\\** (*Call Inline Completion*) asks for a suggestion immediately.
   - Uses fill-in-the-middle (FIM) with models that support it, such as `qwen2.5-coder`. Other chat/instruct models (qwen3, gemma, gpt-oss…) are sent an instruct prompt instead.
   - Thinking is turned off for completion requests, so reasoning models reply quickly.
+  - **Related code from other files**: like Copilot's "neighboring tabs", open tabs, recently edited files and files in the same
+    folder are cut into 60-line windows, and the windows most similar to the code at the caret are added to the prompt.
+- **Project instructions**: put conventions in `.ollamacomplete/instructions.md` (or `.github/copilot-instructions.md`)
+  and they are added to chat and instruct-mode completion prompts.
 - **Model selection**
   - Status bar: click `OllamaComplete: <model>` to switch the completion model or turn completion on/off.
   - Chat window: a model dropdown at the top.
@@ -69,6 +73,8 @@ then restart if the IDE asks you to.
 | Delay after typing | 300 ms | The wait before a request is sent. |
 | Max tokens | 128 | `num_predict` for completion requests. |
 | Context before/after caret | 4000 / 1000 chars | How much of the file is sent to the model. |
+| Use related code from other files | on | Adds up to 4 snippets from open, recently edited and sibling files of the same type. |
+| Related code budget | 3000 chars | Total size of those snippets. FIM prompts need a language with line comments. |
 | Keep model loaded for | 10m | Ollama `keep_alive`. |
 
 ## Project layout

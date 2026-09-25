@@ -1,6 +1,7 @@
 package com.shubhamvasnik.ollamacomplete
 
 import com.intellij.codeInsight.inline.completion.testInlineCompletion
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileTypes.PlainTextFileType
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.shubhamvasnik.ollamacomplete.settings.CompletionMode
@@ -49,6 +50,38 @@ class OllamaLiveInlineCompletionTest : BasePlatformTestCase() {
             val text = withWriteAction { fixture.editor.document.text }
             println("document after Tab:\n$text")
             assertTrue(text, text.contains("return a * b") || text.contains("return a*b"))
+        }
+    }
+
+    fun `test completion uses code from a neighboring file`() {
+        if (!enabled) return
+        // Plain text has no line comment syntax, so FIM prompts leave snippets out; the instruct prompt lists them.
+        OllamaSettings.getInstance().apply {
+            completionMode = CompletionMode.INSTRUCT
+            useOpenFilesContext = true
+        }
+        ApplicationManager.getApplication().invokeAndWait {
+            myFixture.addFileToProject(
+                "MathHelpers.txt",
+                "public final class MathHelpers {\n" +
+                    "    /** Triples the value. */\n" +
+                    "    public static int zorbleTriple(int value) {\n        return value * 3;\n    }\n}\n",
+            )
+        }
+        myFixture.testInlineCompletion(3.minutes) {
+            init(
+                PlainTextFileType.INSTANCE,
+                "public class Main {\n    /** Triples x with the helper from MathHelpers. */\n" +
+                    "    public static int triple(int x) {\n        return MathHelpers.<caret>\n    }\n}\n",
+            )
+            typeChar('z')
+            delay()
+            val suggestion = assertContextExists().textToInsert()
+            println("neighbor-file suggestion: [$suggestion]")
+            assertTrue("unexpected suggestion: [$suggestion]", suggestion.contains("orbleTriple(x)"))
+            insertWithTab()
+            val text = withWriteAction { fixture.editor.document.text }
+            assertTrue(text, text.contains("return MathHelpers.zorbleTriple(x)"))
         }
     }
 }

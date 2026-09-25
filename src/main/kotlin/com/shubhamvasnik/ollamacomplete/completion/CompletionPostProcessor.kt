@@ -11,7 +11,7 @@ object CompletionPostProcessor {
         if (instructMode) {
             text = stripFences(text)
             text = text.replace(CompletionPromptBuilder.CURSOR, "")
-            text = removeEchoedLinePrefix(text, context.linePrefix)
+            text = removeEchoedLinePrefix(text, context.linePrefix, context.knownCode())
             text = reindent(text, context.linePrefix)
         }
         if (singleLine) text = text.substringBefore('\n')
@@ -32,14 +32,25 @@ object CompletionPostProcessor {
      * Instruct models sometimes repeat the start of the caret line (`int x = 5;` when the line already has `int x = `)
      * or the partially typed word (`getName()` after `user.get`).
      */
-    internal fun removeEchoedLinePrefix(text: String, linePrefix: String): String {
+    internal fun removeEchoedLinePrefix(text: String, linePrefix: String, knownCode: String = ""): String {
         val code = linePrefix.trimStart()
         val trimmed = text.trimStart()
         if (code.length >= 2 && trimmed.startsWith(code)) return trimmed.removePrefix(code)
-        val word = linePrefix.takeLastWhile { it.isLetterOrDigit() || it == '_' }
-        if (word.length >= 2 && text.startsWith(word)) return text.removePrefix(word)
-        return text
+        val word = linePrefix.takeLastWhile(::isIdentifierChar)
+        if (word.isEmpty() || !text.startsWith(word)) return text
+        if (word.length >= 2) return text.removePrefix(word)
+        // A single typed letter is only an echo if the identifier the model wrote exists and the doubled one doesn't,
+        // e.g. `MathHelpers.z` + `zorbleTriple`.
+        val identifier = text.takeWhile(::isIdentifierChar)
+        return if (isKnownIdentifier(identifier, knownCode) && !isKnownIdentifier(word + identifier, knownCode)) {
+            text.removePrefix(word)
+        } else text
     }
+
+    private fun isIdentifierChar(c: Char) = c.isLetterOrDigit() || c == '_'
+
+    private fun isKnownIdentifier(identifier: String, code: String): Boolean =
+        identifier.length >= 2 && Regex("(?<![\\w])${Regex.escape(identifier)}(?![\\w])").containsMatchIn(code)
 
     /**
      * The caret already sits after the line's indentation, so the first line must not be indented again,

@@ -33,6 +33,8 @@ class OllamaSettings : SimplePersistentStateComponent<OllamaSettings.SettingsSta
         var maxTokens by property(128)
         var temperature by property(0.2f)
         var multiLine by property(true)
+        var useOpenFilesContext by property(true)
+        var maxSnippetChars by property(3000)
         var chatSystemPrompt by string(DEFAULT_CHAT_SYSTEM_PROMPT)
         var chatThinking by property(false)
         var keepAlive by string("10m")
@@ -59,6 +61,8 @@ class OllamaSettings : SimplePersistentStateComponent<OllamaSettings.SettingsSta
     var maxTokens by state::maxTokens
     var temperature by state::temperature
     var multiLine by state::multiLine
+    var useOpenFilesContext by state::useOpenFilesContext
+    var maxSnippetChars by state::maxSnippetChars
     var chatThinking by state::chatThinking
     var requestTimeoutSec by state::requestTimeoutSec
 

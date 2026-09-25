@@ -28,7 +28,10 @@ class OllamaCompletionService {
         }
         val singleLine = !settings.multiLine || context.isMidLine
 
-        val key = listOf(model, useFim, singleLine, context.prefix.takeLast(1500), context.suffix.take(500)).joinToString("\u0000")
+        val key = listOf(
+            model, useFim, singleLine, context.prefix.takeLast(1500), context.suffix.take(500),
+            context.snippets.hashCode(), context.instructions.hashCode(),
+        ).joinToString("\u0000")
         synchronized(cache) { cache[key] }?.let { return it }
 
         val options = ModelOptions(
@@ -42,7 +45,7 @@ class OllamaCompletionService {
         val request = if (useFim) {
             GenerateRequest(
                 model = model,
-                prompt = context.prefix,
+                prompt = CompletionPromptBuilder.fimPrompt(context),
                 // An empty suffix would make Ollama use the chat template instead of the FIM template.
                 suffix = context.suffix.ifEmpty { "\n" },
                 think = think,
@@ -52,7 +55,7 @@ class OllamaCompletionService {
         } else {
             GenerateRequest(
                 model = model,
-                system = CompletionPromptBuilder.INSTRUCT_SYSTEM_PROMPT,
+                system = CompletionPromptBuilder.instructSystemPrompt(context),
                 prompt = CompletionPromptBuilder.instructPrompt(context),
                 think = think,
                 options = options,

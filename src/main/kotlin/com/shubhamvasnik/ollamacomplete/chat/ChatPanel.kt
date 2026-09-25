@@ -25,6 +25,7 @@ import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.shubhamvasnik.ollamacomplete.OllamaIcons
+import com.shubhamvasnik.ollamacomplete.ProjectInstructions
 import com.shubhamvasnik.ollamacomplete.api.ChatMessage
 import com.shubhamvasnik.ollamacomplete.api.ChatRequest
 import com.shubhamvasnik.ollamacomplete.api.OllamaClient
@@ -294,8 +295,10 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
         answerView.setContent("", streaming = true)
         scrollToBottom(force = true)
 
+        val instructions = runReadActionBlocking { ProjectInstructions.read(project) }
         val history = buildList {
-            settings.chatSystemPrompt.takeIf { it.isNotBlank() }?.let { add(ChatMessage("system", it)) }
+            ProjectInstructions.appendTo(settings.chatSystemPrompt, instructions)
+                .takeIf { it.isNotBlank() }?.let { add(ChatMessage("system", it)) }
             session.entries.forEach { add(it.message) }
         }
         setBusy(true)

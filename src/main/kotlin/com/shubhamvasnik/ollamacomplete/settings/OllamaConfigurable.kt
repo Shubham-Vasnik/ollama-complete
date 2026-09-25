@@ -94,6 +94,13 @@ class OllamaConfigurable : BoundConfigurable("OllamaComplete") {
                 row("Context after caret (chars):") {
                     intTextField(0..100_000).bindIntText(settings::maxSuffixChars)
                 }
+                row {
+                    checkBox("Use related code from open and recently edited files").bindSelected(settings::useOpenFilesContext)
+                        .comment("Like Copilot's neighboring tabs: the parts of those files most similar to the code at the caret are added to the prompt.")
+                }
+                row("Related code budget (chars):") {
+                    intTextField(0..50_000).bindIntText(settings::maxSnippetChars)
+                }
             }
             group("Chat") {
                 row {
