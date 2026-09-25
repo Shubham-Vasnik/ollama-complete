@@ -9,13 +9,17 @@
       <li>Inline (gray text) code completion while you type. Press <b>Tab</b> to accept, <b>Esc</b> to dismiss.</li>
       <li>Works with fill-in-the-middle coder models (e.g. qwen2.5-coder) and with regular instruct models.</li>
       <li>Model selection for completion and chat: in Settings | Tools | OllamaComplete, in the status bar, and in the chat window.</li>
-      <li>OllamaComplete chat tool window with streaming answers, syntax-highlighted code blocks, Copy and Insert at Caret.</li>
-      <li>Editor actions: Explain Selection and Add Selection to Chat.</li>
+      <li>OllamaComplete chat tool window with streaming answers, syntax-highlighted code blocks, Copy, Insert at Caret and Apply to File with a diff preview.</li>
+      <li>Slash commands (/explain, /fix, /tests, /doc, /simplify, plus your own prompt files) and context references (#file, #selection, #problems, @workspace).</li>
+      <li>Saved chat history per project.</li>
+      <li>Editor actions: Explain Selection, Generate Tests, Generate Documentation, Add Selection to Chat, and Fix with OllamaComplete on errors (Alt+Enter).</li>
+      <li>Commit message generation from the included changes.</li>
     </ul>
     Everything runs locally; no code leaves your machine.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends optional="true" config-file="ollamacomplete-vcs.xml">com.intellij.modules.vcs</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <applicationConfigurable
@@ -37,6 +41,12 @@
         <notificationGroup id="OllamaComplete" displayType="BALLOON"/>
 
         <postStartupActivity implementation="com.shubhamvasnik.ollamacomplete.completion.ModelWarmupActivity"/>
+
+        <intentionAction>
+            <className>com.shubhamvasnik.ollamacomplete.actions.FixWithOllamaIntention</className>
+            <category>OllamaComplete</category>
+            <skipBeforeAfter>true</skipBeforeAfter>
+        </intentionAction>
     </extensions>
 
     <applicationListeners>
@@ -51,6 +61,14 @@
                     class="com.shubhamvasnik.ollamacomplete.actions.ExplainSelectionAction"
                     text="Explain Selection"
                     description="Ask OllamaComplete chat to explain the selected code"/>
+            <action id="OllamaComplete.GenerateTests"
+                    class="com.shubhamvasnik.ollamacomplete.actions.GenerateTestsAction"
+                    text="Generate Tests"
+                    description="Ask OllamaComplete chat to write unit tests for the selection or the current file"/>
+            <action id="OllamaComplete.GenerateDocs"
+                    class="com.shubhamvasnik.ollamacomplete.actions.GenerateDocsAction"
+                    text="Generate Documentation"
+                    description="Ask OllamaComplete chat to write documentation comments for the selection or the current file"/>
             <action id="OllamaComplete.AddSelectionToChat"
                     class="com.shubhamvasnik.ollamacomplete.actions.AddSelectionToChatAction"
                     text="Add Selection to Chat"

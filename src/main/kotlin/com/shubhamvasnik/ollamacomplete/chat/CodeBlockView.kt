@@ -21,6 +21,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.shubhamvasnik.ollamacomplete.OllamaNotifier
+import com.shubhamvasnik.ollamacomplete.chat.apply.ApplyCode
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
@@ -29,7 +30,7 @@ import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.SwingUtilities
 
-/** A fenced code block rendered in a read-only, syntax-highlighted IDE editor with Copy / Insert actions. */
+/** A fenced code block rendered in a read-only, syntax-highlighted IDE editor with Copy / Insert / Apply actions. */
 class CodeBlockView(private val project: Project, val language: String) : Disposable {
 
     private val document = EditorFactory.getInstance().createDocument("")
@@ -72,6 +73,7 @@ class CodeBlockView(private val project: Project, val language: String) : Dispos
                 isOpaque = false
                 add(smallButton("Copy", AllIcons.Actions.Copy) { copy() })
                 add(smallButton("Insert at Caret", AllIcons.Actions.MenuPaste) { insertAtCaret() })
+                add(smallButton("Apply to File (shows a diff first)", AllIcons.Actions.Diff) { ApplyCode.apply(project, document.text) })
             }, BorderLayout.EAST)
         }
         component.border = JBUI.Borders.customLine(JBColor.border(), 1)

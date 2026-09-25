@@ -26,10 +26,22 @@ No code leaves your machine.
   - **Settings | Tools | OllamaComplete**: server URL, completion and chat models, and tuning options.
 - **OllamaComplete chat tool window** (right sidebar)
   - Answers stream in and can be stopped. Markdown is rendered.
-  - Code blocks are syntax-highlighted and have **Copy** and **Insert at Caret** buttons.
+  - Code blocks are syntax-highlighted and have **Copy**, **Insert at Caret** and **Apply to File** buttons.
+    *Apply* shows an editable diff before changing the file. It replaces the selection if there is one, otherwise the
+    declaration with the same signature (method, function, class), otherwise it asks the chat model to merge the code.
+  - **Slash commands** at the start of a message: `/explain`, `/fix`, `/tests`, `/doc`, `/simplify`. They work on the
+    selection, or on the whole file when nothing is selected. Add your own as `.ollamacomplete/prompts/<name>.md`
+    (an optional first line `# Description`, then the prompt); they appear as `/<name>`.
+  - **Context references** anywhere in a message: `#file:path/Foo.kt`, `#selection`, `#problems` (errors and warnings
+    in the current file) and `@workspace` (searches the project's files for code related to the question).
+    Typing `/`, `#` or `@` shows suggestions.
   - An **Include current file** option sends the open file along with your question.
+  - **History**: conversations are saved per project; the clock button reopens an earlier one.
   - An optional "Thoughts" section shows the reasoning of models that support thinking.
-- **Editor right-click menu → OllamaComplete**: *Explain Selection* and *Add Selection to Chat*.
+- **Editor right-click menu → OllamaComplete**: *Explain Selection*, *Generate Tests*, *Generate Documentation* and *Add Selection to Chat*.
+- **Alt+Enter on an error → Fix with OllamaComplete** sends the error and the code to the chat with `/fix`.
+- **Commit message**: the OllamaComplete button in the commit window writes the message from the included changes
+  with the chat model.
 - **Tools → OllamaComplete Code Completion** toggles completion.
 
 ## Requirements
@@ -94,7 +106,11 @@ src/main/kotlin/com/shubhamvasnik/ollamacomplete/
   api/          OllamaClient (HTTP + NDJSON streaming), DTOs
   settings/     persistent settings + Settings page
   completion/   inline completion provider, prompt builder, output post-processing
-  chat/         tool window, chat panel, message rendering, code blocks
-  actions/      editor / Tools menu actions
+  chat/         tool window, chat panel, message rendering, code blocks, history
+    commands/   slash commands, #/@ references, message preparation
+    workspace/  @workspace keyword search (BM25)
+    apply/      Apply to File: code placement and diff dialog
+  actions/      editor / Tools menu actions, Fix with OllamaComplete intention
+  vcs/          commit message generation (loaded only when VCS support is present)
   statusbar/    status bar model switcher
 ```

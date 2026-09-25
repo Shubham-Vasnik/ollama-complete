@@ -1,0 +1,11 @@
+<idea-plugin>
+    <actions>
+        <action id="OllamaComplete.GenerateCommitMessage"
+                class="com.shubhamvasnik.ollamacomplete.vcs.GenerateCommitMessageAction"
+                text="Generate Commit Message with OllamaComplete"
+                description="Write the commit message from the included changes with the OllamaComplete chat model"
+                icon="/icons/ollama.svg">
+            <add-to-group group-id="Vcs.MessageActionGroup" anchor="first"/>
+        </action>
+    </actions>
+</idea-plugin>

@@ -1,6 +1,22 @@
 package com.shubhamvasnik.ollamacomplete.chat
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.application.readAction
+import com.intellij.openapi.fileEditor.ex.IdeDocumentHistory
+import com.intellij.openapi.project.guessProjectDir
+import com.intellij.openapi.ui.popup.JBPopupFactory
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.DocumentAdapter
+import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.awt.RelativePoint
+import com.intellij.util.text.DateFormatUtil
+import com.shubhamvasnik.ollamacomplete.chat.commands.ChatContextResolver
+import com.shubhamvasnik.ollamacomplete.completion.context.ContextCollector
+import java.awt.Component
+import java.awt.Point
+import javax.swing.JList
+import javax.swing.event.DocumentEvent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -8,7 +24,6 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.runReadActionBlocking
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
@@ -89,7 +104,7 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
         lineWrap = true
         wrapStyleWord = true
         border = JBUI.Borders.empty(6)
-        emptyText.text = "Ask OllamaComplete… (Enter to send, Shift+Enter for a new line)"
+        emptyText.text = "Ask OllamaComplete…  / commands · # context · @workspace"
     }
     private val includeFile = JBCheckBox("Include current file")
     private val sendButton = JButton("Send", AllIcons.Actions.Execute)
@@ -118,6 +133,7 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
         ApplicationManager.getApplication().messageBus.connect(this)
             .subscribe(OllamaSettingsListener.TOPIC, OllamaSettingsListener { selectModel(settings.chatModel) })
 
+        installAutoComplete()
         rebuildMessages()
         refreshModels()
     }
@@ -155,6 +171,9 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
             },
             object : DumbAwareAction("New Chat", "Start a new conversation", AllIcons.General.Add) {
                 override fun actionPerformed(e: AnActionEvent) = newChat()
+            },
+            object : DumbAwareAction("History", "Open a previous conversation", AllIcons.Vcs.History) {
+                override fun actionPerformed(e: AnActionEvent) = showHistory(e.inputEvent?.component)
             },
             object : DumbAwareAction("Settings", "Open OllamaComplete settings", AllIcons.General.Settings) {
                 override fun actionPerformed(e: AnActionEvent) {
@@ -285,29 +304,34 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
         }
         input.text = ""
 
-        val attached = if (includeFile.isSelected) currentFileContext() else null
-        val content = if (attached != null) "${attached.second}\n\n$prompt" else prompt
-        val display = if (attached != null) "$prompt\n\n_Attached: ${attached.first}_" else prompt
-        val userEntry = ChatSession.Entry(ChatMessage("user", content), display)
-        session.entries += userEntry
-        addMessage("user", null).setContent(display)
+        val editorState = ChatContextResolver.captureEditor(project)
+        val includeCurrentFile = includeFile.isSelected
+        val userView = addMessage("user", null)
+        userView.setContent(prompt)
         val answerView = addMessage("assistant", model)
         answerView.setContent("", streaming = true)
         scrollToBottom(force = true)
 
-        val instructions = runReadActionBlocking { ProjectInstructions.read(project) }
-        val history = buildList {
-            ProjectInstructions.appendTo(settings.chatSystemPrompt, instructions)
-                .takeIf { it.isNotBlank() }?.let { add(ChatMessage("system", it)) }
-            session.entries.forEach { add(it.message) }
-        }
         setBusy(true)
         val startedIn = conversation
         job = session.scope.launch {
             val answer = StringBuilder()
             val thoughts = StringBuilder()
             var lastRender = 0L
+            var userEntry: ChatSession.Entry? = null
             try {
+                // Commands, #references and @workspace are resolved off the EDT; @workspace may search many files.
+                val prepared = ChatContextResolver(project).prepare(prompt, editorState, includeCurrentFile)
+                withContext(Dispatchers.EDT) { userView.setContent(prepared.display) }
+                if (startedIn != conversation) return@launch
+                userEntry = ChatSession.Entry(ChatMessage("user", prepared.content), prepared.display).also { session.entries += it }
+
+                val instructions = readAction { ProjectInstructions.read(project) }
+                val history = buildList {
+                    ProjectInstructions.appendTo(settings.chatSystemPrompt, instructions)
+                        .takeIf { it.isNotBlank() }?.let { add(ChatMessage("system", it)) }
+                    session.entries.forEach { add(it.message) }
+                }
                 val capabilities = runCatching { client.capabilities(model) }.getOrDefault(emptySet())
                 val request = ChatRequest(
                     model = model,
@@ -327,11 +351,13 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
                     }
                 }
                 session.entries += ChatSession.Entry(ChatMessage("assistant", answer.toString()), answer.toString(), model)
+                session.save()
                 withContext(Dispatchers.EDT) { render(answerView, answer.toString(), thoughts.toString(), streaming = false) }
             } catch (e: CancellationException) {
                 withContext(NonCancellable + Dispatchers.EDT) {
                     if (answer.isNotEmpty() && startedIn == conversation) {
                         session.entries += ChatSession.Entry(ChatMessage("assistant", answer.toString()), answer.toString(), model)
+                        session.save()
                     }
                     render(answerView, answer.toString(), thoughts.toString(), streaming = false)
                     answerView.setStatus("Stopped")
@@ -339,7 +365,7 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
                 throw e
             } catch (e: Exception) {
                 withContext(Dispatchers.EDT) {
-                    session.entries.remove(userEntry)
+                    userEntry?.let { session.entries.remove(it) }
                     render(answerView, answer.toString(), thoughts.toString(), streaming = false)
                     answerView.setError(e.message ?: e.javaClass.simpleName)
                 }
@@ -349,22 +375,106 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
         }
     }
 
+    // ---- history ----
+
+    private fun showHistory(anchor: Component?) {
+        val summaries = ChatHistory.getInstance(project).summaries()
+        if (summaries.isEmpty()) {
+            JBPopupFactory.getInstance().createMessage("No saved conversations yet").showInCenterOf(this)
+            return
+        }
+        val popup = JBPopupFactory.getInstance().createPopupChooserBuilder(summaries)
+            .setTitle("Chat History")
+            .setRenderer(object : ColoredListCellRenderer<ChatHistory.Summary>() {
+                override fun customizeCellRenderer(
+                    list: JList<out ChatHistory.Summary>, value: ChatHistory.Summary, index: Int, selected: Boolean, hasFocus: Boolean,
+                ) {
+                    append(value.title)
+                    if (value.id == session.conversationId) append("  (current)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    append("  " + DateFormatUtil.formatPrettyDateTime(value.updated), SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                }
+            })
+            .setNamerForFiltering { it.title }
+            .setItemChosenCallback { openConversation(it.id) }
+            .createPopup()
+        if (anchor != null) popup.showUnderneathOf(anchor) else popup.showInCenterOf(this)
+    }
+
+    private fun openConversation(id: String) {
+        if (id == session.conversationId) return
+        conversation++
+        job?.cancel()
+        if (!session.load(id)) return
+        rebuildMessages()
+        scrollToBottom(force = true)
+    }
+
+    // ---- input suggestions for / # @ ----
+
+    private data class Suggestion(val text: String, val description: String)
+
+    private fun installAutoComplete() {
+        input.document.addDocumentListener(object : DocumentAdapter() {
+            override fun textChanged(e: DocumentEvent) {
+                if (e.type != DocumentEvent.EventType.INSERT || e.length != 1) return
+                val offset = e.offset
+                val text = input.text
+                val trigger = text.getOrNull(offset) ?: return
+                if (trigger !in TRIGGERS) return
+                if (offset > 0 && !text[offset - 1].isWhitespace()) return
+                // Commands only make sense at the start of the message.
+                if (trigger == '/' && text.substring(0, offset).isNotBlank()) return
+                SwingUtilities.invokeLater { showSuggestions(trigger, offset) }
+            }
+        })
+    }
+
+    private fun suggestions(trigger: Char): List<Suggestion> = when (trigger) {
+        '/' -> runReadActionBlocking { ChatContextResolver(project).commands() }.map { Suggestion("/${it.name}", it.description) }
+        '@' -> listOf(Suggestion("@workspace", "Search the project for code related to the question"))
+        else -> listOf(
+            Suggestion("#selection", "The code selected in the editor"),
+            Suggestion("#problems", "Errors and warnings in the current file"),
+        ) + fileSuggestions()
+    }
+
+    private fun fileSuggestions(): List<Suggestion> {
+        val root = project.guessProjectDir()
+        val files = LinkedHashSet<VirtualFile>()
+        files += FileEditorManager.getInstance(project).openFiles
+        files += IdeDocumentHistory.getInstance(project).changedFiles.asReversed()
+        return files.filter { it.isValid && !it.isDirectory }.take(MAX_FILE_SUGGESTIONS)
+            .map { Suggestion("#file:${ContextCollector.path(it, root)}", "Attach this file") }
+    }
+
+    private fun showSuggestions(trigger: Char, offset: Int) {
+        if (input.text.getOrNull(offset) != trigger || !input.isShowing) return
+        val items = suggestions(trigger)
+        if (items.isEmpty()) return
+        val popup = JBPopupFactory.getInstance().createPopupChooserBuilder(items)
+            .setRenderer(object : ColoredListCellRenderer<Suggestion>() {
+                override fun customizeCellRenderer(list: JList<out Suggestion>, value: Suggestion, index: Int, selected: Boolean, hasFocus: Boolean) {
+                    append(value.text)
+                    append("  " + value.description, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                }
+            })
+            .setNamerForFiltering { it.text }
+            .setItemChosenCallback { item ->
+                if (input.text.getOrNull(offset) == trigger) {
+                    input.replaceRange(item.text + " ", offset, offset + 1)
+                    input.caretPosition = offset + item.text.length + 1
+                }
+                input.requestFocusInWindow()
+            }
+            .createPopup()
+        val caret = input.modelToView2D(offset)?.bounds ?: return
+        popup.show(RelativePoint(input, Point(caret.x, caret.y + caret.height)))
+    }
+
     private fun render(view: MessageComponent, text: String, thinking: String, streaming: Boolean) {
         val stick = isScrolledToBottom()
         view.setContent(text, if (settings.chatThinking) thinking else "", streaming)
         if (stick) scrollToBottom(force = true)
-    }
-
-    /** Returns the file name and a Markdown block with the content of the file open in the editor. */
-    private fun currentFileContext(): Pair<String, String>? {
-        val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return null
-        return runReadActionBlocking {
-            val file = FileDocumentManager.getInstance().getFile(editor.document)
-            val name = file?.name ?: "current file"
-            val language = file?.extension.orEmpty()
-            val text = editor.document.text.let { if (it.length > MAX_FILE_CHARS) it.take(MAX_FILE_CHARS) + "\n… (truncated)" else it }
-            name to "Here is the file `$name` currently open in my editor:\n```$language\n$text\n```"
-        }
     }
 
     private fun setBusy(busy: Boolean) {
@@ -403,6 +513,7 @@ class ChatPanel(private val project: Project) : SimpleToolWindowPanel(true, true
     companion object {
         private const val SEND_ACTION = "ollama.send"
         private const val RENDER_INTERVAL_MS = 60L
-        private const val MAX_FILE_CHARS = 30_000
+        private const val TRIGGERS = "/#@"
+        private const val MAX_FILE_SUGGESTIONS = 30
     }
 }

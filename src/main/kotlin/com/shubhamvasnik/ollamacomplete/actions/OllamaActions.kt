@@ -35,9 +35,30 @@ abstract class SelectionToChatAction : DumbAwareAction() {
 }
 
 class ExplainSelectionAction : SelectionToChatAction() {
-    override fun perform(panel: ChatPanel, codeBlock: String) =
-        panel.sendPrompt("Explain what the following code does:\n\n$codeBlock")
+    // The /explain command attaches the selection itself.
+    override fun perform(panel: ChatPanel, codeBlock: String) = panel.sendPrompt("/explain")
 }
+
+/**
+ * Runs a chat command on the selection, or on the whole file when nothing is selected, like Copilot's
+ * Generate Tests / Generate Docs.
+ */
+abstract class CommandOnCodeAction(private val command: String) : DumbAwareAction() {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+
+    override fun update(e: AnActionEvent) {
+        e.presentation.isEnabledAndVisible = e.project != null && e.getData(CommonDataKeys.EDITOR) != null
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+        val project = e.project ?: return
+        ChatSession.getInstance(project).withPanel { panel -> panel.sendPrompt("/$command") }
+    }
+}
+
+class GenerateTestsAction : CommandOnCodeAction("tests")
+
+class GenerateDocsAction : CommandOnCodeAction("doc")
 
 class AddSelectionToChatAction : SelectionToChatAction() {
     override fun perform(panel: ChatPanel, codeBlock: String) = panel.appendToInput(codeBlock)
