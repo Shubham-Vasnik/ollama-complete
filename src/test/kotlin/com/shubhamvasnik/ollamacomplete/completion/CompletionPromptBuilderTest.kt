@@ -87,4 +87,13 @@ class CompletionPromptBuilderTest {
         assertTrue(CompletionPromptBuilder.instructSystemPrompt(ctx).endsWith("\n\nProject instructions:\nUse tabs."))
         assertEquals(CompletionPromptBuilder.INSTRUCT_SYSTEM_PROMPT, CompletionPromptBuilder.instructSystemPrompt(ctx.copy(instructions = null)))
     }
+    @Test
+    fun `multi line only where a block or statement starts`() {
+        assertTrue(CompletionContext("    ", "", "", "").allowsMultiLine)
+        assertTrue(CompletionContext("fun f() {", "", "", "").allowsMultiLine)
+        assertTrue(CompletionContext("def f(x):", "", "", "").allowsMultiLine)
+        assertTrue(CompletionContext("list.map { x ->", "", "", "").allowsMultiLine)
+        assertFalse(CompletionContext("        return", "", "", "").allowsMultiLine)
+        assertFalse(CompletionContext("    ", "foo()", "", "").allowsMultiLine)
+    }
 }

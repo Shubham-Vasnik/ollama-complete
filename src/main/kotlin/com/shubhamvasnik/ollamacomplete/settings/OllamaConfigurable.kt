@@ -76,6 +76,18 @@ class OllamaConfigurable : BoundConfigurable("OllamaComplete") {
                 }
                 row {
                     checkBox("Allow multi-line completions").bindSelected(settings::multiLine)
+                        .comment("Used on empty lines and after block openers such as { or :, like Copilot.")
+                }
+                row("Suggestions per request:") {
+                    intTextField(1..5).bindIntText(settings::suggestionCount)
+                        .comment("Alternatives are generated after the first one is shown. Cycle with Alt+] and Alt+[.")
+                }
+                row {
+                    checkBox("Complete inside comments").bindSelected(settings::completeInComments)
+                }
+                row("Disabled for languages:") {
+                    textField().bindText(settings::disabledLanguages).columns(COLUMNS_MEDIUM)
+                        .comment("Language IDs or file extensions separated by commas, e.g. Markdown, txt")
                 }
                 row("Delay after typing (ms):") {
                     intTextField(0..5000).bindIntText(settings::debounceMs)

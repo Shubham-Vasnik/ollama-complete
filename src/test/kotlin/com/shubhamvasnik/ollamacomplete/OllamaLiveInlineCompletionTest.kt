@@ -53,6 +53,29 @@ class OllamaLiveInlineCompletionTest : BasePlatformTestCase() {
         }
     }
 
+    fun `test multi-line completion stops at the end of the block and alternatives can be cycled`() {
+        if (!enabled) return
+        OllamaSettings.getInstance().suggestionCount = 2
+        myFixture.testInlineCompletion(3.minutes) {
+            init(
+                PlainTextFileType.INSTANCE,
+                "public class Util {\n    public static int max(int a, int b) {\n        <caret>\n    }\n\n" +
+                    "    public static int min(int a, int b) {\n        return a < b ? a : b;\n    }\n}\n",
+            )
+            callInlineCompletion()
+            delay()
+            val first = assertContextExists().textToInsert()
+            println("multi-line suggestion: [$first]")
+            assertTrue("unexpected suggestion: [$first]", first.contains("a") && first.contains("b"))
+            assertFalse("must stop at the end of the method: [$first]", first.contains("public static"))
+            assertFalse("must not repeat the closing brace: [$first]", first.trimEnd().endsWith("}") && first.count { it == '}' } > first.count { it == '{' })
+            nextVariant()
+            val second = assertContextExists().textToInsert()
+            println("alternative suggestion: [$second]")
+            assertTrue(second.isNotBlank())
+        }
+    }
+
     fun `test completion uses code from a neighboring file`() {
         if (!enabled) return
         // Plain text has no line comment syntax, so FIM prompts leave snippets out; the instruct prompt lists them.

@@ -35,7 +35,14 @@
                                 implementation="com.shubhamvasnik.ollamacomplete.statusbar.OllamaStatusBarWidgetFactory"/>
 
         <notificationGroup id="OllamaComplete" displayType="BALLOON"/>
+
+        <postStartupActivity implementation="com.shubhamvasnik.ollamacomplete.completion.ModelWarmupActivity"/>
     </extensions>
+
+    <applicationListeners>
+        <listener class="com.shubhamvasnik.ollamacomplete.completion.ModelWarmupSettingsListener"
+                  topic="com.shubhamvasnik.ollamacomplete.settings.OllamaSettingsListener"/>
+    </applicationListeners>
 
     <actions>
         <group id="OllamaComplete.EditorPopup" text="OllamaComplete" popup="true" icon="/icons/ollama.svg">

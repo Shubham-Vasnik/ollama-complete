@@ -68,6 +68,14 @@ class OllamaClient(val scope: CoroutineScope) {
         return response
     }
 
+    /** Streams /api/generate as NDJSON chunks. Cancelling the collector aborts the request, which stops generation. */
+    fun generateStream(request: GenerateRequest): Flow<GenerateResponse> =
+        streamLines("/api/generate", json.encodeToString(request.copy(stream = true))).map { line ->
+            val chunk = json.decodeFromString<GenerateResponse>(line)
+            chunk.error?.let { throw OllamaException(it) }
+            chunk
+        }
+
     /** Streams /api/chat as NDJSON chunks. Cancelling the collector aborts the request. */
     fun chat(request: ChatRequest): Flow<ChatChunk> =
         streamLines("/api/chat", json.encodeToString(request.copy(stream = true))).map { line ->

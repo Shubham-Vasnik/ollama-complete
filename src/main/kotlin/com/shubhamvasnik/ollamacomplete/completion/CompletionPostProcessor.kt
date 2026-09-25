@@ -6,6 +6,16 @@ object CompletionPostProcessor {
     private val fence = Regex("(?s)```[\\w+#.-]*[^\\S\\n]*\\n?(.*?)(?:\\n?```|$)")
 
     fun process(raw: String, context: CompletionContext, singleLine: Boolean, instructMode: Boolean): String {
+        var text = prepare(raw, context, instructMode)
+        text = if (singleLine) text.substringBefore('\n') else truncateAtBlockEnd(text, context.linePrefix)
+        text = text.trimEnd()
+        if (text.isBlank()) return ""
+        text = trimSuffixOverlap(text, context.suffix)
+        return if (text.isBlank()) "" else text
+    }
+
+    /** The clean-up that does not depend on where the completion ends: think blocks, fences, echoes, indentation. */
+    internal fun prepare(raw: String, context: CompletionContext, instructMode: Boolean): String {
         var text = raw.replace("\r\n", "\n")
         text = thinkBlock.replace(text, "")
         if (instructMode) {
@@ -14,12 +24,38 @@ object CompletionPostProcessor {
             text = removeEchoedLinePrefix(text, context.linePrefix, context.knownCode())
             text = reindent(text, context.linePrefix)
         }
-        if (singleLine) text = text.substringBefore('\n')
-        text = text.trimEnd()
-        if (text.isBlank()) return ""
-        text = trimSuffixOverlap(text, context.suffix)
-        return if (text.isBlank()) "" else text
+        return text
     }
+
+    /**
+     * Cuts a multi-line completion where the block at the caret ends, like Copilot does, so the model can't go on to
+     * write the next method. A line indented less than the caret line ends the block; after a block opener
+     * (`{`, `:`) a line at the caret line's own indentation does too. A line of only closing brackets is kept,
+     * [trimSuffixOverlap] drops it again if the editor already has it.
+     */
+    internal fun truncateAtBlockEnd(text: String, linePrefix: String): String {
+        val base = indentWidth(linePrefix)
+        val code = linePrefix.trimEnd()
+        val opensBlock = code.endsWith('{') || code.endsWith(':')
+        if (base == 0 && !opensBlock) return text
+        val lines = text.split('\n')
+        for (i in 1 until lines.size) {
+            val line = lines[i]
+            if (line.isBlank()) continue
+            val indent = indentWidth(line)
+            if (indent < base || (opensBlock && indent <= base)) {
+                val keep = if (line.trim().all { it in CLOSING }) i + 1 else i
+                return lines.take(keep).joinToString("\n")
+            }
+        }
+        return text
+    }
+
+    private const val CLOSING = "})];,"
+
+    /** Tabs count as 4 columns so mixed indentation still compares sensibly. */
+    private fun indentWidth(line: String): Int =
+        line.takeWhile { it == ' ' || it == '\t' }.sumOf { if (it == '\t') 4 else 1 }
 
     /** Instruct models like to wrap answers in ``` fences even when told not to. */
     internal fun stripFences(text: String): String {

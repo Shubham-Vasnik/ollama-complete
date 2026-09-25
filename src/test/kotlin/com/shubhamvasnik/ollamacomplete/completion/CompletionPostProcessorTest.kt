@@ -102,4 +102,31 @@ class CompletionPostProcessorTest {
     fun `blank output becomes empty`() {
         assertEquals("", CompletionPostProcessor.process("  \n \n", ctx("x"), singleLine = false, instructMode = true))
     }
+    @Test
+    fun `stops where the block at the caret ends`() {
+        // The model goes on to write the next method after closing the current one.
+        val raw = "return a * b;\n    }\n\n    public static int div(int a, int b) {\n        return a / b;"
+        assertEquals("return a * b;\n    }", CompletionPostProcessor.truncateAtBlockEnd(raw, "        "))
+    }
+
+    @Test
+    fun `after a block opener the block ends at the caret line's indentation`() {
+        val raw = "\n    return x * 2\n\ndef other():\n    pass"
+        assertEquals("\n    return x * 2\n", CompletionPostProcessor.truncateAtBlockEnd(raw, "def double(x):"))
+        val kotlin = "\n    val y = x\n}\n\nfun next() {}"
+        assertEquals("\n    val y = x\n}", CompletionPostProcessor.truncateAtBlockEnd(kotlin, "fun f(x: Int) {"))
+    }
+
+    @Test
+    fun `lines at the same or deeper indentation are kept`() {
+        val raw = "foo()\n    bar()\n        baz()\n    qux()"
+        assertEquals(raw, CompletionPostProcessor.truncateAtBlockEnd(raw, "    "))
+        assertEquals("a\nb", CompletionPostProcessor.truncateAtBlockEnd("a\nb", ""))
+    }
+
+    @Test
+    fun `a closing line the editor already has is dropped after truncation`() {
+        val raw = "return a * b;\n    }\n    int other() {"
+        assertEquals("return a * b;", CompletionPostProcessor.process(raw, ctx("        ", "\n    }\n}"), singleLine = false, instructMode = false))
+    }
 }

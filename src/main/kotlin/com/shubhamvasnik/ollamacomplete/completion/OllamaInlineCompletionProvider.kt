@@ -5,18 +5,23 @@ import com.intellij.codeInsight.inline.completion.InlineCompletionEvent
 import com.intellij.codeInsight.inline.completion.InlineCompletionProviderID
 import com.intellij.codeInsight.inline.completion.InlineCompletionRequest
 import com.intellij.codeInsight.inline.completion.elements.InlineCompletionGrayTextElement
-import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionSingleSuggestion
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionSuggestion
+import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionVariant
 import com.intellij.lang.LanguageCommenters
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.logger
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
+import com.intellij.openapi.roots.ProjectFileIndex
+import com.intellij.psi.PsiComment
+import com.intellij.psi.util.PsiTreeUtil
 import com.shubhamvasnik.ollamacomplete.OllamaNotifier
 import com.shubhamvasnik.ollamacomplete.ProjectInstructions
 import com.shubhamvasnik.ollamacomplete.api.OllamaException
 import com.shubhamvasnik.ollamacomplete.completion.context.ContextCollector
 import com.shubhamvasnik.ollamacomplete.completion.context.SnippetRanker
 import com.shubhamvasnik.ollamacomplete.settings.OllamaSettings
+import java.util.Collections
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -43,8 +48,10 @@ class OllamaInlineCompletionProvider : DebouncedInlineCompletionProvider() {
             val file = request.file
             val virtualFile = file.virtualFile
             val project = file.project
+            val document = request.document
+            if (shouldSkip(request, settings)) return@readAction null
             val context = CompletionPromptBuilder.extract(
-                text = request.document.immutableCharSequence,
+                text = document.immutableCharSequence,
                 offset = request.endOffset,
                 maxPrefixChars = settings.maxPrefixChars,
                 maxSuffixChars = settings.maxSuffixChars,
@@ -59,30 +66,80 @@ class OllamaInlineCompletionProvider : DebouncedInlineCompletionProvider() {
                 ContextCollector.collect(project, virtualFile)
             } else emptyList()
             context to candidates
-        }
+        } ?: return InlineCompletionSuggestion.Empty
         if (base.prefix.isBlank()) return InlineCompletionSuggestion.Empty
         val snippets = SnippetRanker.rank(SnippetRanker.queryText(base.prefix), candidates, MAX_SNIPPETS, settings.maxSnippetChars)
         val context = base.copy(snippets = snippets)
 
-        val text = try {
-            OllamaCompletionService.getInstance().complete(context)
+        val service = OllamaCompletionService.getInstance()
+        val project = request.editor.project
+        val count = settings.suggestionCount.coerceIn(1, MAX_VARIANTS)
+        // The platform computes the variants one after another, so alternatives only start once the first is complete.
+        val results = Collections.synchronizedList(mutableListOf<String>())
+        val variants = (0 until count).map { variant ->
+            InlineCompletionVariant.build {
+                reportingErrors(project) {
+                    if (variant == 0) {
+                        // Streamed, so the first lines appear while the model is still writing.
+                        val text = StringBuilder()
+                        service.stream(context, variant).collect { piece ->
+                            text.append(piece)
+                            emit(InlineCompletionGrayTextElement(piece))
+                        }
+                        results += text.toString()
+                    } else {
+                        val text = service.complete(context, variant)
+                        if (text.isNotBlank() && text !in results) {
+                            results += text
+                            emit(InlineCompletionGrayTextElement(text))
+                        }
+                    }
+                }
+            }
+        }
+        return object : InlineCompletionSuggestion {
+            override suspend fun getVariants(): List<InlineCompletionVariant> = variants
+        }
+    }
+
+    /** Called in a read action. */
+    private fun shouldSkip(request: InlineCompletionRequest, settings: OllamaSettings): Boolean {
+        val file = request.file
+        val virtualFile = file.virtualFile
+        if (settings.isLanguageDisabled(file.language.id, virtualFile?.extension)) return true
+        val document = request.document
+        if (document.textLength > MAX_DOCUMENT_CHARS) return true
+        val line = document.getLineNumber(request.endOffset.coerceIn(0, document.textLength))
+        // Minified code: a suggestion there is never useful and the prompt would be mostly one line.
+        if (document.getLineEndOffset(line) - document.getLineStartOffset(line) > MAX_LINE_CHARS) return true
+        if (virtualFile != null) {
+            val index = ProjectFileIndex.getInstance(file.project)
+            if (index.isExcluded(virtualFile) || index.isUnderIgnored(virtualFile)) return true
+        }
+        if (!settings.completeInComments) {
+            val element = file.findElementAt((request.endOffset - 1).coerceAtLeast(0))
+            if (PsiTreeUtil.getParentOfType(element, PsiComment::class.java, false) != null) return true
+        }
+        return false
+    }
+
+    private suspend fun reportingErrors(project: Project?, block: suspend () -> Unit) {
+        try {
+            block()
         } catch (e: OllamaException) {
-            OllamaNotifier.errorOnce(request.editor.project, "OllamaComplete: completion failed: ${e.message}")
-            return InlineCompletionSuggestion.Empty
+            OllamaNotifier.errorOnce(project, "OllamaComplete: completion failed: ${e.message}")
         } catch (e: java.io.IOException) {
             LOG.debug(e)
-            OllamaNotifier.errorOnce(request.editor.project, "OllamaComplete: completion failed: ${e.message ?: e.javaClass.simpleName}")
-            return InlineCompletionSuggestion.Empty
-        }
-        if (text.isEmpty()) return InlineCompletionSuggestion.Empty
-        return InlineCompletionSingleSuggestion.build {
-            emit(InlineCompletionGrayTextElement(text))
+            OllamaNotifier.errorOnce(project, "OllamaComplete: completion failed: ${e.message ?: e.javaClass.simpleName}")
         }
     }
 
     companion object {
         val ID = InlineCompletionProviderID("com.shubhamvasnik.ollamacomplete.inline")
         private const val MAX_SNIPPETS = 4
+        private const val MAX_VARIANTS = 5
+        private const val MAX_DOCUMENT_CHARS = 1_000_000
+        private const val MAX_LINE_CHARS = 2_000
         private val LOG = logger<OllamaInlineCompletionProvider>()
     }
 }

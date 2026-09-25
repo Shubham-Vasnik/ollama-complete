@@ -7,6 +7,13 @@ No code leaves your machine.
 
 - **Inline code completion**: suggestions appear as gray text while you type.
   - **Tab** accepts, **Esc** dismisses, **Shift+Alt+\\** (*Call Inline Completion*) asks for a suggestion immediately.
+  - **Ctrl+→** accepts the next word and **End** the rest of the line (the IDE's *Next Word* / *Line End* shortcuts).
+  - **Alt+]** / **Alt+[** cycle through alternative suggestions, which are generated after the first one is shown.
+  - Suggestions stream in line by line, and the request stops as soon as the block at the caret ends.
+  - Keep typing what the suggestion says and it stays; the rest is reused without asking the model again.
+  - Several lines are only suggested on an empty line or after a block opener (`{`, `(`, `:`, `=>`, `->`), like Copilot.
+  - The completion model is loaded when a project opens, so the first suggestion is not slowed down by loading it.
+  - Excluded folders (e.g. `build/`), minified files and very large files are skipped.
   - Uses fill-in-the-middle (FIM) with models that support it, such as `qwen2.5-coder`. Other chat/instruct models (qwen3, gemma, gpt-oss…) are sent an instruct prompt instead.
   - Thinking is turned off for completion requests, so reasoning models reply quickly.
   - **Related code from other files**: like Copilot's "neighboring tabs", open tabs, recently edited files and files in the same
@@ -69,7 +76,10 @@ then restart if the IDE asks you to.
 | Server URL | `http://localhost:11434` | Use **Test Connection** to check it. |
 | Completion / Chat model | – | Filled from `/api/tags`. Embedding-only models are hidden. |
 | Prompt mode | Auto | Auto uses FIM when the model has the `insert` capability and an instruct prompt otherwise. |
-| Multi-line completions | on | A completion in the middle of a line is always limited to one line. |
+| Multi-line completions | on | Only on empty lines and after block openers; a completion in the middle of a line is always one line. |
+| Suggestions per request | 2 | 1 turns alternatives off. |
+| Complete inside comments | on | |
+| Disabled for languages | – | Language IDs or file extensions, e.g. `Markdown, txt`. |
 | Delay after typing | 300 ms | The wait before a request is sent. |
 | Max tokens | 128 | `num_predict` for completion requests. |
 | Context before/after caret | 4000 / 1000 chars | How much of the file is sent to the model. |

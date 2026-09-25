@@ -27,12 +27,25 @@ data class CompletionContext(
     /** Completing in the middle of a line (code after the caret) should only produce a single line. */
     val isMidLine: Boolean get() = lineSuffix.isNotBlank() && lineSuffix.trim().any { it.isLetterOrDigit() }
 
+    /**
+     * Like Copilot, several lines are only suggested where a block or a new statement starts: on an empty line or
+     * after an opening bracket, `:`, `=>` or `->`. In the middle of a statement one line is enough, and it is faster.
+     */
+    val allowsMultiLine: Boolean
+        get() {
+            if (isMidLine) return false
+            val code = linePrefix.trim()
+            return code.isEmpty() || MULTI_LINE_OPENERS.any { code.endsWith(it) }
+        }
+
     /** All code the model was shown, to check whether an identifier it wrote exists. */
     fun knownCode(): String = buildString {
         append(prefix).append('\n').append(suffix)
         snippets.forEach { append('\n').append(it.text) }
     }
 }
+
+private val MULTI_LINE_OPENERS = listOf("{", "(", "[", ":", "=>", "->")
 
 object CompletionPromptBuilder {
     const val CURSOR = "<CURSOR>"

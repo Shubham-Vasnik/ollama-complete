@@ -35,6 +35,9 @@ class OllamaSettings : SimplePersistentStateComponent<OllamaSettings.SettingsSta
         var multiLine by property(true)
         var useOpenFilesContext by property(true)
         var maxSnippetChars by property(3000)
+        var suggestionCount by property(2)
+        var completeInComments by property(true)
+        var disabledLanguages by string("")
         var chatSystemPrompt by string(DEFAULT_CHAT_SYSTEM_PROMPT)
         var chatThinking by property(false)
         var keepAlive by string("10m")
@@ -63,6 +66,17 @@ class OllamaSettings : SimplePersistentStateComponent<OllamaSettings.SettingsSta
     var multiLine by state::multiLine
     var useOpenFilesContext by state::useOpenFilesContext
     var maxSnippetChars by state::maxSnippetChars
+    var suggestionCount by state::suggestionCount
+    var completeInComments by state::completeInComments
+
+    /** Language IDs or file extensions, separated by commas, where inline completion is off. */
+    var disabledLanguages: String
+        get() = state.disabledLanguages.orEmpty()
+        set(value) { state.disabledLanguages = value.trim() }
+
+    fun isLanguageDisabled(languageId: String, extension: String?): Boolean =
+        disabledLanguages.split(',').map { it.trim().removePrefix(".") }.filter { it.isNotEmpty() }
+            .any { it.equals(languageId, ignoreCase = true) || it.equals(extension, ignoreCase = true) }
     var chatThinking by state::chatThinking
     var requestTimeoutSec by state::requestTimeoutSec
 
